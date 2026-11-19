@@ -1,0 +1,16 @@
+# Python bytecode & test caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Runtime SQLite databases & logs
+data/*.sqlite3
+data/*.sqlite3-journal
+data/*.sqlite3-wal
+data/*.db
+*.log
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HYPERION — Xưởng Phân tích Tĩnh, Thực thi Ký hiệu DPLL(T) &amp; Sinh Unit Test</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Thanh trạng thái an toàn phần cứng & điều khiển nhanh -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-badge" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 21 7 21 17 12 22 3 17 3 7 12 2"></polygon>
+            <polyline points="3 7 12 12 21 7"></polyline>
+            <line x1="12" y1="22" x2="12" y2="12"></line>
+            <circle cx="12" cy="12" r="2.2" fill="currentColor"></circle>
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <div class="brand-title">HYPERION <span class="ver">v1.0 PORTABLE</span></div>
+          <div class="brand-sub" id="machineBanner">Đang nhận diện phần cứng máy chủ...</div>
+        </div>
+      </div>
+
+      <div class="telemetry-strip">
+        <div class="gauge-pill">
+          <span class="g-label">Tải CPU</span>
+          <span class="g-val" id="gCpu">0.0%</span>
+        </div>
+        <div class="gauge-pill">
+          <span class="g-label">RAM trống hệ thống</span>
+          <span class="g-val" id="gFreeRam">--%</span>
+        </div>
+        <div class="gauge-pill">
+          <span class="g-label">RAM tiến trình</span>
+          <span class="g-val" id="gProcRam">0 MB</span>
+        </div>
+        <div class="gauge-pill">
+          <span class="g-label">Luồng trình duyệt</span>
+          <span class="g-val" id="gWebWorkers">0</span>
+        </div>
+        <div class="status-pill state-idle" id="stateBadge">IDLE</div>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-sm" id="btnThemeToggle" type="button" aria-label="Chuyển đổi giao diện Sáng hoặc Tối" title="Chuyển đổi giao diện Sáng / Tối">
+          <svg class="ico ico-sun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"></circle>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+          </svg>
+          <svg class="ico ico-moon hidden" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+          <span id="themeToggleLabel">Giao diện Sáng</span>
+        </button>
+        <button class="btn btn-primary" id="btnStart" type="button">
+          <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <polygon points="6 4 20 12 6 20 6 4"></polygon>
+          </svg>
+          Khởi chạy động cơ
+        </button>
+        <button class="btn btn-danger" id="btnEmergencyStop" type="button" title="Ngắt ngay toàn bộ tiến trình xử lý trong dưới 50ms">
+          <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="5" y="5" width="14" height="14" rx="2"></rect>
+          </svg>
+          Dừng khẩn cấp
+        </button>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <!-- Thanh bên: Chuyển nhanh giữa Cấu hình & An toàn / Danh sách hàm -->
+      <aside class="sidebar">
+        <div class="sidebar-switcher" role="tablist" aria-label="Ngăn điều hướng thanh bên">
+          <button class="side-tab active" type="button" data-side-pane="sidePaneConfig">Cấu hình &amp; An toàn</button>
+          <button class="side-tab" type="button" data-side-pane="sidePaneFunctions">Danh sách hàm (<span id="fnCount">0</span>)</button>
+        </div>
+
+        <div class="side-pane active" id="sidePaneConfig">
+          <section class="panel">
+            <h3>Cấu hình tác vụ</h3>
+
+            <label class="field">
+              <span>Chế độ thực thi</span>
+              <select id="cfgMode">
+                <option value="benchmark" selected>Đo chuẩn đa máy (Benchmark)</option>
+                <option value="stress">Ép tải liên tục (Stress)</option>
+                <option value="analyze">Phân tích sâu một lượt</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Nguồn mã mục tiêu</span>
+              <select id="cfgCorpus">
+                <option value="procedural" selected>Bộ sinh mã kiểm thử trên RAM</option>
+                <option value="self_host">Tự phân tích mã nguồn HYPERION</option>
+                <option value="custom_path">Quét thư mục cục bộ (Chỉ đọc)</option>
+              </select>
+            </label>
+
+            <label class="field hidden" id="customPathWrap">
+              <span>Đường dẫn thư mục</span>
+              <input type="text" id="cfgCustomPath" placeholder="G:\duong\dan\du_an" />
+            </label>
+
+            <label class="field">
+              <span>Mức cường độ xử lý</span>
+              <select id="cfgIntensity">
+                <option value="balanced">Cân bằng (Nhẹ máy)</option>
+                <option value="heavy" selected>Phân tích chuyên sâu</option>
+                <option value="extreme">Cường độ tối đa</option>
+                <option value="benchmark">Chuẩn đo kiểm</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Hệ số quy mô dữ liệu: <strong id="lblScale">4</strong></span>
+              <input type="range" id="cfgScale" min="1" max="24" value="4" />
+            </label>
+
+            <div class="toggles-grid">
+              <label class="chk"><input type="checkbox" id="chkOpt" checked /> Tối ưu SSA</label>
+              <label class="chk"><input type="checkbox" id="chkAi" checked /> Diễn dịch khoảng</label>
+              <label class="chk"><input type="checkbox" id="chkSym" checked /> Ký hiệu DPLL(T)</label>
+              <label class="chk"><input type="checkbox" id="chkMut" checked /> Đột biến trên RAM</label>
+            </div>
+          </section>
+
+          <section class="panel safety-panel">
+            <h3>Bảo vệ phần cứng</h3>
+            <p class="hint">Xử lý 100% trên RAM, không ghi tệp tạm lên ổ SSD. Mức ưu tiên thấp giữ Windows mượt mà.</p>
+
+            <label class="field">
+              <span>Số luồng Python tối đa: <strong id="lblWorkers">4</strong></span>
+              <input type="range" id="cfgWorkers" min="1" max="16" value="4" />
+            </label>
+
+            <label class="field">
+              <span>Trần RAM tiến trình (MB): <strong id="lblMaxRam">1536</strong></span>
+              <input type="range" id="cfgMaxRam" min="256" max="8192" step="128" value="1536" />
+            </label>
+
+            <label class="field">
+              <span>Vùng nhớ đệm RAM ép tải (MB): <strong id="lblRamArena">0</strong></span>
+              <input type="range" id="cfgRamArena" min="0" max="4096" step="64" value="0" />
+            </label>
+
+            <label class="field">
+              <span>Ngưỡng RAM trống tối thiểu: <strong id="lblFreeFloor">10</strong>%</span>
+              <input type="range" id="cfgFreeFloor" min="10" max="55" step="5" value="10" />
+            </label>
+
+            <label class="field">
+              <span>Giới hạn thời gian chạy: <strong id="lblTimeout">120</strong> giây</span>
+              <input type="range" id="cfgTimeout" min="15" max="600" step="15" value="120" />
+            </label>
+
+            <label class="chk highlight-chk">
+              <input type="checkbox" id="chkWebWorkerStress" />
+              <span>Ép tải song song trên trình duyệt</span>
+            </label>
+            <label class="field" id="webWorkerCountWrap">
+              <span>Số luồng trình duyệt: <strong id="lblJsWorkers">2</strong></span>
+              <input type="range" id="cfgJsWorkers" min="1" max="8" value="2" />
+            </label>
+          </section>
+        </div>
+
+        <div class="side-pane" id="sidePaneFunctions">
+          <section class="panel fn-panel">
+            <h3>Danh sách hàm đã phân tích</h3>
+            <input type="text" id="fnSearch" class="search-box" placeholder="Lọc theo tên hàm..." />
+            <div class="fn-list" id="fnList">
+              <div class="empty-msg">Bấm khởi chạy động cơ hoặc thử phân tích nhanh ở tab Kiểm chứng.</div>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <!-- Khu vực làm việc chính -->
+      <main class="studio">
+        <nav class="tabs">
+          <button class="tab active" type="button" data-tab="telemetry">1. Hiệu năng &amp; Luồng xử lý</button>
+          <button class="tab" type="button" data-tab="cfg">2. Đồ thị CFG, Nhánh chết &amp; Tua vết</button>
+          <button class="tab" type="button" data-tab="inspector">3. Sinh Unit Test &amp; Kiểm chứng Refactor</button>
+          <button class="tab" type="button" data-tab="leaderboard">4. Diệt Mutant SMT &amp; Xếp hạng</button>
+        </nav>
+
+        <!-- Tab 1: Hiệu năng & Luồng xử lý -->
+        <section class="tab-view active" id="view-telemetry">
+          <div class="hero-telemetry">
+            <div class="panel chart-panel">
+              <div class="panel-head">
+                <h3>Dao động phần cứng &amp; thông lượng thời gian thực</h3>
+                <span class="legend">
+                  <span><i class="dot cpu"></i>CPU%</span>
+                  <span><i class="dot ram"></i>RAM trống%</span>
+                  <span><i class="dot smt"></i>SMT/giây</span>
+                  <span><i class="dot mut"></i>Đột biến/giây</span>
+                </span>
+              </div>
+              <canvas id="telemetryCanvas" width="700" height="240"></canvas>
+            </div>
+
+            <div class="panel metrics-panel">
+              <div class="panel-head">
+                <h3>Bảng chỉ số động cơ</h3>
+                <span class="badge" id="runProgressText">Sẵn sàng</span>
+              </div>
+              <table class="metrics-table">
+                <tbody>
+                  <tr class="metric-primary">
+                    <th>Điểm tổng hợp</th>
+                    <td class="m-val accent-val" id="scComposite">0.0</td>
+                    <td class="m-sub">Hệ số chuẩn đa máy</td>
+                  </tr>
+                  <tr>
+                    <th>Phân tích SSA &amp; CFG</th>
+                    <td class="m-val" id="scSsa">0</td>
+                    <td class="m-sub"><span id="totInsts">0</span> lệnh SSA</td>
+                  </tr>
+                  <tr>
+                    <th>Giải ràng buộc DPLL(T)</th>
+                    <td class="m-val" id="scSmt">0</td>
+                    <td class="m-sub"><span id="totSmt">0</span> truy vấn SMT</td>
+                  </tr>
+                  <tr>
+                    <th>Đột biến trên RAM</th>
+                    <td class="m-val" id="scMut">0</td>
+                    <td class="m-sub"><span id="totMut">0</span> bản / <span id="totVmSteps">0</span> bước VM</td>
+                  </tr>
+                  <tr>
+                    <th>Phản ví dụ lỗi</th>
+                    <td class="m-val warn-text" id="totCx">0</td>
+                    <td class="m-sub"><span id="totAi">0</span> cảnh báo tĩnh</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progressFill" style="width: 0%"></div>
+          </div>
+          <div class="safety-banner hidden" id="safetyBanner"></div>
+
+          <div class="split-2">
+            <div class="panel">
+              <h3>Các tiến trình Python &amp; trình duyệt đang chạy</h3>
+              <div id="workerGrid" class="worker-grid">
+                <div class="empty-msg">Các luồng đang rảnh. Khi chạy sẽ tự khóa ở mức ưu tiên thấp.</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Luồng phát hiện lỗi, lỗ hổng &amp; nhân chứng thực thi</h3>
+              <div class="findings-feed" id="findingsFeed">
+                <div class="empty-msg">Chưa ghi nhận phát hiện lỗi nào.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Đồ thị CFG, Nhánh chết UNSAT & Tua từng bước -->
+        <section class="tab-view" id="view-cfg">
+          <div class="panel cfg-toolbar">
+            <div class="cfg-info">
+              <strong id="cfgFnName">Chưa chọn hàm nào</strong>
+              <span id="cfgFnMeta" class="badge">Chọn hàm ở cột trái hoặc chạy phân tích ở tab 3</span>
+            </div>
+            <div class="cfg-controls">
+              <label class="chk"><input type="checkbox" id="chkShowDead" checked /> Nhánh code chết (UNSAT)</label>
+              <label class="chk"><input type="checkbox" id="chkShowDom" checked /> Cây chế ngự</label>
+              <label class="chk"><input type="checkbox" id="chkShowDfg" checked /> Luồng dữ liệu DFG</label>
+              <button class="btn btn-sm" id="btnResetGraph" type="button">Đặt lại bố cục</button>
+            </div>
+          </div>
+
+          <!-- Thanh điều khiển Tua từng bước đường chạy gây lỗi -->
+          <div class="panel trace-toolbar">
+            <div class="trace-controls">
+              <strong>Tua từng bước đường chạy gây lỗi:</strong>
+              <button class="btn btn-sm" id="btnTracePrev" type="button">
+                <svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                Bước trước
+              </button>
+              <button class="btn btn-sm" id="btnTraceNext" type="button">
+                Bước tiếp
+                <svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <button class="btn btn-sm" id="btnTraceReset" type="button">Đặt lại</button>
+              <span class="badge" id="traceStepLabel">Bước 0/0</span>
+            </div>
+            <div class="trace-custom-inputs">
+              <input type="text" id="traceInputsInput" class="trace-input" placeholder='Đầu vào JSON, ví dụ: {"k": 5}' />
+              <button class="btn btn-primary btn-sm" id="btnRunTraceReplay" type="button">
+                <svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <polygon points="6 4 20 12 6 20 6 4"></polygon>
+                </svg>
+                Chạy tua vết
+              </button>
+            </div>
+          </div>
+
+          <div class="cfg-canvas-wrap">
+            <canvas id="cfgCanvas"></canvas>
+            <div class="cfg-block-inspector" id="cfgBlockOverlay">
+              Nhấp hoặc kéo từng khối lệnh trên đồ thị để xem chi tiết SSA và nhánh chết UNSAT. Cuộn chuột để thu phóng.
+            </div>
+          </div>
+
+          <div class="split-2">
+            <div class="panel">
+              <h3>Danh sách nhánh code chết (UNSAT)</h3>
+              <div id="deadBranchesBox" class="mono-box">Chưa phát hiện nhánh chết UNSAT nào.</div>
+            </div>
+            <div class="panel">
+              <h3>Trạng thái biến &amp; khoảng giá trị tại bước đang tua</h3>
+              <div id="traceStepDetailBox" class="mono-box">Chưa có dữ liệu tua vết thực thi. Chọn phản ví dụ hoặc nhập đầu vào JSON để tua từng bước.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Mã nguồn, SSA, Sinh Unit Test & Kiểm chứng Tương đương khi Refactor -->
+        <section class="tab-view" id="view-inspector">
+          <div class="panel inspector-header">
+            <div class="pg-left">
+              <strong>Xưởng kiểm chứng đa ngôn ngữ</strong>
+              <select id="pgLang">
+                <option value="python">Python</option>
+                <option value="typescript">TypeScript / DSL</option>
+              </select>
+            </div>
+            <div class="sub-tabs" role="tablist" aria-label="Ngăn con kiểm chứng mã nguồn">
+              <button class="sub-tab active" type="button" data-sub-tab="sub-analyze">Phân tích nhanh</button>
+              <button class="sub-tab" type="button" data-sub-tab="sub-testgen">Sinh Unit Test</button>
+              <button class="sub-tab" type="button" data-sub-tab="sub-equiv">Kiểm chứng Refactor</button>
+            </div>
+          </div>
+
+          <!-- Ngăn con 1: Phân tích nhanh -->
+          <div class="sub-view active" id="sub-analyze">
+            <div class="panel playground-bar">
+              <div class="pg-left">
+                <button class="btn btn-sm" id="btnLoadSample" type="button">Nạp đoạn mã mẫu</button>
+                <label class="chk"><input type="checkbox" id="chkAnalyzeKillMutants" checked /> Tự diệt mutant bằng SMT</label>
+              </div>
+              <button class="btn btn-primary btn-sm" id="btnAnalyzeSnippet" type="button">
+                <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                Phân tích đoạn mã ngay
+              </button>
+            </div>
+
+            <div class="split-2 tall-split">
+              <div class="panel code-panel">
+                <h3>Mã nguồn đầu vào</h3>
+                <textarea id="srcEditor" spellcheck="false"></textarea>
+              </div>
+              <div class="panel code-panel">
+                <h3>Mã trung gian Unified SSA IR &amp; khối cơ bản</h3>
+                <pre id="ssaViewer" class="mono-pre"></pre>
+              </div>
+            </div>
+
+            <div class="split-2">
+              <div class="panel">
+                <h3>Diễn dịch trừu tượng (Khoảng giá trị &amp; Dòng nhiễm bẩn)</h3>
+                <div id="aiIntervalsBox" class="mono-box"></div>
+              </div>
+              <div class="panel">
+                <h3>Phản ví dụ DPLL(T) &amp; đường chạy kích hoạt lỗi</h3>
+                <div id="cxDetailBox" class="mono-box"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ngăn con 2: Bộ sinh Unit Test tự động (pytest / vitest / jest) -->
+          <div class="sub-view" id="sub-testgen">
+            <div class="panel">
+              <div class="panel-head">
+                <h3>Bộ sinh Unit Test tự động (pytest / vitest / jest)</h3>
+                <div class="pg-left">
+                  <select id="testFrameworkSelect">
+                    <option value="pytest" selected>pytest</option>
+                    <option value="vitest">vitest</option>
+                    <option value="jest">jest</option>
+                  </select>
+                  <button class="btn btn-primary btn-sm" id="btnGenerateTests" type="button">
+                    <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M9 3h6M10 3v6l-5 8a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-8V3"></path>
+                    </svg>
+                    Sinh bộ Unit Test
+                  </button>
+                  <button class="btn btn-sm" id="btnCopyTests" type="button">Sao chép mã test</button>
+                </div>
+              </div>
+              <pre id="testGenViewer" class="mono-pre mono-pre-tall">// Bấm "Sinh bộ Unit Test" để tạo bộ kiểm thử hoàn chỉnh kèm giá trị kỳ vọng từ IRInterpreter.</pre>
+            </div>
+          </div>
+
+          <!-- Ngăn con 3: Kiểm chứng Tương đương khi Refactor (Hàm Cũ vs Hàm Mới) -->
+          <div class="sub-view" id="sub-equiv">
+            <div class="panel">
+              <div class="panel-head">
+                <h3>Kiểm chứng Tương đương khi Refactor (Hàm Cũ &amp; Hàm Mới)</h3>
+                <button class="btn btn-primary btn-sm" id="btnProveEquiv" type="button">
+                  <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 3v18M5 7h14M3 13l2-6 2 6a2.5 2.5 0 0 1-4 0zM17 13l2-6 2 6a2.5 2.5 0 0 1-4 0zM8 21h8"></path>
+                  </svg>
+                  Kiểm chứng tương đương
+                </button>
+              </div>
+              <div class="split-2">
+                <div class="code-panel">
+                  <span class="sub-label">Hàm Cũ (bản gốc chuẩn)</span>
+                  <textarea id="equivOldEditor" class="equiv-editor" spellcheck="false"></textarea>
+                </div>
+                <div class="code-panel">
+                  <span class="sub-label">Hàm Mới (bản đã viết lại / refactor)</span>
+                  <textarea id="equivNewEditor" class="equiv-editor" spellcheck="false"></textarea>
+                </div>
+              </div>
+              <div id="equivResultBox" class="mono-box" style="margin-top: 10px;">
+                Nhập mã nguồn Hàm Cũ và Hàm Mới rồi bấm "Kiểm chứng tương đương" để chứng minh toán học bằng DPLL(T).
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 4: Diệt Mutant SMT & Bảng xếp hạng giữa các máy -->
+        <section class="tab-view" id="view-leaderboard">
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Ma trận đột biến trên RAM &amp; Tiêu diệt đột biến sống sót bằng SMT</h3>
+              <button class="btn btn-primary btn-sm" id="btnKillMutants" type="button">
+                <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                Diệt Mutant sống sót bằng SMT
+              </button>
+            </div>
+            <div id="mutantKillSummary" class="mono-box" style="margin-bottom: 10px;">
+              Chọn một hàm hoặc phân tích đoạn mã, sau đó bấm nút trên để tìm đầu vào tiêu diệt các đột biến SURVIVED và tự động nối vào bộ test.
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="mutationTable">
+                <thead>
+                  <tr>
+                    <th>Mã</th>
+                    <th>Toán tử</th>
+                    <th>Khối / Dòng</th>
+                    <th>Lệnh SSA gốc</th>
+                    <th>Lệnh SSA đột biến</th>
+                    <th>Trạng thái</th>
+                    <th>Bước VM</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Bảng xếp hạng Benchmark giữa các máy (SQLite trên Win10_SSD)</h3>
+              <button class="btn btn-sm" id="btnRefreshBoard" type="button">
+                <svg class="ico" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                </svg>
+                Làm mới
+              </button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="leaderboardTable">
+                <thead>
+                  <tr>
+                    <th>Hạng</th>
+                    <th>Máy chủ / Bộ xử lý</th>
+                    <th>Luồng / RAM</th>
+                    <th>Chế độ / Nguồn mã</th>
+                    <th>Tổng điểm</th>
+                    <th>SSA/CFG</th>
+                    <th>DPLL(T)</th>
+                    <th>Đột biến</th>
+                    <th>Thời gian</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="/dist/app.js"></script>
+</body>
+</html>
